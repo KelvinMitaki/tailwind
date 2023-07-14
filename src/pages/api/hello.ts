@@ -1,47 +1,66 @@
 // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
-import fs from "fs";
+
 import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 
-type Data = {
-  name: string;
+const base64ToBlob = (base64String: string): Blob => {
+  const binaryString = atob(base64String);
+  const bytes = new Uint8Array(binaryString.length);
+
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  return new Blob([bytes]);
 };
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<Data>
+  res: NextApiResponse
 ) {
-  const file = fs.readFileSync(
-    "/Users/kelvinmitaki/Downloads/docxexample.docx"
-  );
+  switch (req.method) {
+    case "POST":
+      try {
+        const formData = new FormData();
+        const blob = base64ToBlob(req.body.file);
 
-  const formData = new FormData();
+        formData.append("1", blob, "docxexample.docx");
 
-  const blob = new Blob([file]);
+        formData.append(
+          "ConversionOptions",
+          JSON.stringify({
+            MinimizeTheNumberOfWorksheets: "false",
+            UseOcr: "false",
+            Locale: "en",
+            Password: null,
+          })
+        );
 
-  formData.append("1", blob, "docxexample.docx");
+        const { data } = await axios.post(
+          "https://api.products.aspose.app/words/conversion/api/convert?outputType=PDF",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
 
-  formData.append(
-    "ConversionOptions",
-    JSON.stringify({
-      MinimizeTheNumberOfWorksheets: "false",
-      UseOcr: "false",
-      Locale: "en",
-      Password: null,
-    })
-  );
+        const url = `https://api.products.aspose.app/words/conversion/api/Download?id=${data.id}`;
 
-  const { data } = await axios.post(
-    "https://api.products.aspose.app/words/conversion/api/convert?outputType=PDF",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    }
-  );
+        const { data: arrayBuffer } = await axios.get(url, {
+          responseType: "arraybuffer",
+        });
 
-  console.log(data);
+        const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
-  res.status(200).json({ name: "John Doe" });
+        return res.json({ data: base64Data });
+      } catch (error) {
+        console.log(error);
+        return res.json({ data: "failed to convert file " });
+      }
+      break;
+    case "GET":
+      return res.status(200).json({ data: "John Doe" });
+  }
 }
